@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Invoice = {
   id: string
@@ -11,7 +12,7 @@ type Invoice = {
   description: string
 }
 
-const API_BASE_URL = 'http://localhost:5092/api/Invoice'
+const API_BASE_URL = `${API_BASE_URLS.AMS}/Invoice`
 
 export function InvoiceList() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -436,7 +437,7 @@ export function InvoiceList() {
           <div className="relative w-full max-w-md">
             <input
               type="text"
-              placeholder="Search by invoice number or description..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -753,7 +754,7 @@ export function InvoiceList() {
                     value={formData.number}
                     onChange={(e) => setFormData({ ...formData, number: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="e.g., INV-2025-0001"
+                    placeholder="Please enter invoice number"
                     required
                   />
                 </div>
@@ -781,7 +782,7 @@ export function InvoiceList() {
                   value={formData.totalAmount}
                   onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="0.00"
+                  placeholder="Please enter total amount"
                   required
                 />
               </div>
@@ -794,7 +795,7 @@ export function InvoiceList() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="Enter invoice description..."
+                  placeholder="Please enter description"
                   rows={3}
                 />
               </div>

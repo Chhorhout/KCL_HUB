@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HRMSSidebar } from '../components/HRMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Department = {
   id: string
@@ -23,8 +24,8 @@ type Employee = {
   departmentId: string
 }
 
-const API_BASE_URL = 'http://localhost:5045/api/Department'
-const EMPLOYEE_API_URL = 'http://localhost:5045/api/Employee'
+const API_BASE_URL = `${API_BASE_URLS.HRMS}/Department`
+const EMPLOYEE_API_URL = `${API_BASE_URLS.HRMS}/Employee`
 
 export function DepartmentList() {
   const navigate = useNavigate()
@@ -488,7 +489,7 @@ export function DepartmentList() {
           <div className="relative w-full max-w-md">
             <input
               type="text"
-              placeholder="Search by department name..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -543,18 +544,14 @@ export function DepartmentList() {
           <div className="flex-shrink-0 overflow-hidden">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-[40%]" />
                 <col className="w-[30%]" />
                 <col className="w-[30%]" />
-                <col className="w-[20%]" />
-                <col className="w-[20%]" />
               </colgroup>
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     NAME
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    ID
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     EMPLOYEES
@@ -571,21 +568,20 @@ export function DepartmentList() {
           <div className="overflow-y-auto max-h-[600px] flex-1">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-[40%]" />
                 <col className="w-[30%]" />
                 <col className="w-[30%]" />
-                <col className="w-[20%]" />
-                <col className="w-[20%]" />
               </colgroup>
               <tbody className="bg-white divide-y divide-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">
+                    <td colSpan={3} className="px-6 py-4 text-center text-sm text-slate-500">
                       Loading departments...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-red-600">
+                    <td colSpan={3} className="px-6 py-4 text-center text-sm text-red-600">
                       Error: {error}
                     </td>
                   </tr>
@@ -621,9 +617,6 @@ export function DepartmentList() {
                                 {dept.name}
                               </button>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-900">
-                            {dept.id}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <button
@@ -713,7 +706,7 @@ export function DepartmentList() {
                       {/* Expanded Employee List - Card View */}
                       {isExpanded && (
                         <tr>
-                          <td colSpan={4} className="px-6 py-6 bg-gradient-to-br from-slate-50 to-slate-100">
+                          <td colSpan={3} className="px-6 py-6 bg-gradient-to-br from-slate-50 to-slate-100">
                             <div className="space-y-4">
                               <div className="flex items-center justify-between mb-4">
                                 <h4 className="text-base font-bold text-slate-800">
@@ -959,7 +952,7 @@ export function DepartmentList() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">
+                    <td colSpan={3} className="px-6 py-4 text-center text-sm text-slate-500">
                       No departments found
                     </td>
                   </tr>
@@ -1145,7 +1138,7 @@ export function DepartmentList() {
                     value={formData.name}
                     onChange={(e) => setFormData({ name: e.target.value })}
                     className="w-full pl-10 pr-4 py-3 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="Enter department name"
+                    placeholder="Please enter department name"
                     required
                   />
                 </div>

@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Supplier = {
   id: string
@@ -11,7 +12,7 @@ type Supplier = {
   address: string
 }
 
-const API_BASE_URL = 'http://localhost:5092/api/Suppliers'
+const API_BASE_URL = `${API_BASE_URLS.AMS}/Suppliers`
 
 export function SupplierList() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -424,7 +425,7 @@ export function SupplierList() {
           <div className="relative w-full max-w-md">
             <input
               type="text"
-              placeholder="Search by name, email, phone, or address..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -737,7 +738,7 @@ export function SupplierList() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="e.g., Brightline Electrical Supply"
+                  placeholder="Please enter supplier name"
                   required
                 />
               </div>
@@ -752,7 +753,7 @@ export function SupplierList() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="support@example.com"
+                    placeholder="Please enter email"
                   />
                 </div>
                 <div>
@@ -764,7 +765,7 @@ export function SupplierList() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="+64 9 302 8800"
+                    placeholder="Please enter phone number"
                   />
                 </div>
               </div>
@@ -778,7 +779,7 @@ export function SupplierList() {
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="e.g., 28 Queen Street"
+                  placeholder="Please enter address"
                 />
               </div>
 

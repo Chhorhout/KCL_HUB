@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Owner = {
   id: string
@@ -16,8 +17,8 @@ type OwnerType = {
   description: string
 }
 
-const API_BASE_URL = 'http://localhost:5092/api/Owner'
-const OWNER_TYPE_API_URL = 'http://localhost:5092/api/OwnerType'
+const API_BASE_URL = `${API_BASE_URLS.AMS}/Owner`
+const OWNER_TYPE_API_URL = `${API_BASE_URLS.AMS}/OwnerType`
 
 export function OwnerList() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -25,33 +26,51 @@ export function OwnerList() {
   // Read initial state from URL
   const pageFromUrl = parseInt(searchParams.get('page') || '1', 10)
   const searchFromUrl = searchParams.get('search') || ''
+  const tabFromUrl = (searchParams.get('tab') || 'owner') as 'owner' | 'owner-type'
+  const ownerTypePageFromUrl = parseInt(searchParams.get('ownerTypePage') || '1', 10)
+  const ownerTypeSearchFromUrl = searchParams.get('ownerTypeSearch') || ''
   
   const [owners, setOwners] = useState<Owner[]>([])
   const [ownerTypes, setOwnerTypes] = useState<OwnerType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(searchFromUrl)
+  const [ownerTypeSearchQuery, setOwnerTypeSearchQuery] = useState(ownerTypeSearchFromUrl)
   const [currentPage, setCurrentPage] = useState(pageFromUrl)
   const [pageSize] = useState(12)
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [activeTab, setActiveTab] = useState<'owner' | 'owner-type'>(tabFromUrl)
+  
+  // Pagination for Owner Type tab
+  const [ownerTypePage, setOwnerTypePage] = useState(ownerTypePageFromUrl)
+  const [ownerTypeTotalCount, setOwnerTypeTotalCount] = useState(0)
+  const [ownerTypeTotalPages, setOwnerTypeTotalPages] = useState(1)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPositionRef = useRef<number>(0)
   const editingOwnerIdRef = useRef<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showCreateOwnerType, setShowCreateOwnerType] = useState(false)
+  const [showOwnerTypeModal, setShowOwnerTypeModal] = useState(false)
+  const [showDeleteOwnerTypeModal, setShowDeleteOwnerTypeModal] = useState(false)
   const [newOwnerTypeName, setNewOwnerTypeName] = useState('')
   const [newOwnerTypeDescription, setNewOwnerTypeDescription] = useState('')
   const [creatingOwnerType, setCreatingOwnerType] = useState(false)
   const [deletingOwner, setDeletingOwner] = useState<Owner | null>(null)
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null)
+  const [editingOwnerType, setEditingOwnerType] = useState<OwnerType | null>(null)
+  const [deletingOwnerType, setDeletingOwnerType] = useState<OwnerType | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     ownertypeId: '',
   })
+  const [ownerTypeFormData, setOwnerTypeFormData] = useState({
+    name: '',
+    description: '',
+  })
 
-  // Fetch owner types
+  // Fetch owner types (for dropdown)
   const fetchOwnerTypes = async () => {
     try {
       const response = await axios.get(OWNER_TYPE_API_URL)
@@ -70,6 +89,73 @@ export function OwnerList() {
       } else {
         setError('Failed to load owner types')
       }
+    }
+  }
+
+  // Fetch owner types with pagination
+  const fetchOwnerTypesPaginated = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const params: Record<string, string> = {}
+      
+      // When searching, fetch ALL owner types (no pagination) for client-side filtering
+      // When not searching, use server-side pagination
+      if (ownerTypeSearchQuery.trim()) {
+        // Fetch all for client-side filtering
+      } else {
+        params.page = ownerTypePage.toString()
+        params.pageSize = pageSize.toString()
+      }
+      
+      const response = await axios.get(OWNER_TYPE_API_URL, { params })
+      const data = response.data
+      const totalCountHeader = response.headers['x-total-count'] || response.headers['X-Total-Count']
+      const totalPagesHeader = response.headers['x-total-pages'] || response.headers['X-Total-Pages']
+      
+      if (Array.isArray(data)) {
+        let filteredData = data
+        
+        // Client-side filtering when searching
+        if (ownerTypeSearchQuery.trim()) {
+          const searchLower = ownerTypeSearchQuery.trim().toLowerCase()
+          filteredData = data.filter((type: OwnerType) => {
+            const nameMatch = type.name.toLowerCase().includes(searchLower)
+            const descriptionMatch = (type.description || '').toLowerCase().includes(searchLower)
+            return nameMatch || descriptionMatch
+          })
+        }
+        
+        // Update pagination state from response headers (only if not searching)
+        if (!ownerTypeSearchQuery.trim()) {
+          if (totalCountHeader) {
+            setOwnerTypeTotalCount(parseInt(totalCountHeader, 10))
+            if (totalPagesHeader) {
+              setOwnerTypeTotalPages(parseInt(totalPagesHeader, 10))
+            } else {
+              setOwnerTypeTotalPages(Math.ceil(parseInt(totalCountHeader, 10) / pageSize) || 1)
+            }
+          } else {
+            setOwnerTypeTotalCount(data.length)
+            setOwnerTypeTotalPages(Math.ceil(data.length / pageSize) || 1)
+          }
+        } else {
+          // When searching, update count based on filtered results
+          setOwnerTypeTotalCount(filteredData.length)
+          setOwnerTypeTotalPages(1)
+          if (ownerTypePage !== 1) {
+            setOwnerTypePage(1)
+          }
+        }
+        
+        setOwnerTypes(filteredData)
+      }
+    } catch (err) {
+      console.error('Error fetching owner types:', err)
+      setError('Failed to fetch owner types')
+      setOwnerTypes([])
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -406,6 +492,64 @@ export function OwnerList() {
     }
   }
 
+  // ========== Owner Type CRUD Operations ==========
+  const handleAddOwnerType = async () => {
+    if (!ownerTypeFormData.name.trim()) {
+      setError('Name is required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.post(OWNER_TYPE_API_URL, {
+        name: ownerTypeFormData.name.trim(),
+        description: ownerTypeFormData.description.trim(),
+      })
+      await fetchOwnerTypesPaginated()
+      await fetchOwnerTypes() // Also update dropdown
+      setShowOwnerTypeModal(false)
+      setOwnerTypeFormData({ name: '', description: '' })
+      setEditingOwnerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to add owner type')
+    }
+  }
+
+  const handleUpdateOwnerType = async () => {
+    if (!editingOwnerType || !ownerTypeFormData.name.trim()) {
+      setError('Name is required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.put(`${OWNER_TYPE_API_URL}/${editingOwnerType.id}`, {
+        name: ownerTypeFormData.name.trim(),
+        description: ownerTypeFormData.description.trim(),
+      })
+      await fetchOwnerTypesPaginated()
+      await fetchOwnerTypes() // Also update dropdown
+      setShowOwnerTypeModal(false)
+      setOwnerTypeFormData({ name: '', description: '' })
+      setEditingOwnerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to update owner type')
+    }
+  }
+
+  const handleDeleteOwnerType = async () => {
+    if (!deletingOwnerType) return
+    try {
+      setError(null)
+      await axios.delete(`${OWNER_TYPE_API_URL}/${deletingOwnerType.id}`)
+      await fetchOwnerTypesPaginated()
+      await fetchOwnerTypes() // Also update dropdown
+      setShowDeleteOwnerTypeModal(false)
+      setDeletingOwnerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to delete owner type')
+    }
+  }
+
+
   // Open modal for add
   const openAddModal = () => {
     setEditingOwner(null)
@@ -465,16 +609,36 @@ export function OwnerList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update URL when page or search changes
+  // Fetch data based on active tab
+  useEffect(() => {
+    if (activeTab === 'owner-type') {
+      fetchOwnerTypesPaginated()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, ownerTypePage, ownerTypeSearchQuery])
+
+  // Update URL when page, search, tab, or pagination changes
   useEffect(() => {
     const params = new URLSearchParams()
     
-    if (currentPage > 1) {
-      params.set('page', currentPage.toString())
-    }
+    // Always set the active tab
+    params.set('tab', activeTab)
     
-    if (searchQuery.trim()) {
-      params.set('search', searchQuery.trim())
+    // Set page based on active tab
+    if (activeTab === 'owner') {
+      if (currentPage > 1) {
+        params.set('page', currentPage.toString())
+      }
+      if (searchQuery.trim()) {
+        params.set('search', searchQuery.trim())
+      }
+    } else if (activeTab === 'owner-type') {
+      if (ownerTypePage > 1) {
+        params.set('ownerTypePage', ownerTypePage.toString())
+      }
+      if (ownerTypeSearchQuery.trim()) {
+        params.set('ownerTypeSearch', ownerTypeSearchQuery.trim())
+      }
     }
     
     const currentUrl = searchParams.toString()
@@ -482,7 +646,7 @@ export function OwnerList() {
     if (currentUrl !== newUrl) {
       setSearchParams(params, { replace: true })
     }
-  }, [currentPage, searchQuery, searchParams, setSearchParams])
+  }, [activeTab, currentPage, ownerTypePage, searchQuery, ownerTypeSearchQuery, searchParams, setSearchParams])
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -495,15 +659,28 @@ export function OwnerList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery])
 
-  // Debounced search effect
+  // Debounced search effects
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      fetchOwners()
+      if (activeTab === 'owner') {
+        fetchOwners()
+      }
     }, 500)
 
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery])
+  }, [currentPage, searchQuery, activeTab])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (activeTab === 'owner-type') {
+        fetchOwnerTypesPaginated()
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerTypeSearchQuery, activeTab])
 
   return (
     <div className="flex min-h-screen">
@@ -513,62 +690,151 @@ export function OwnerList() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-blue-600">Owner</h1>
+              <h1 className="text-2xl font-bold text-blue-600">
+                {activeTab === 'owner' ? 'Owner' : 'Owner Type'}
+              </h1>
             </div>
+            {activeTab === 'owner' && (
+              <button
+                onClick={openAddModal}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            )}
+            {activeTab === 'owner-type' && (
+              <button
+                onClick={() => {
+                  setEditingOwnerType(null)
+                  setOwnerTypeFormData({ name: '', description: '' })
+                  setShowOwnerTypeModal(true)
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Owner Type
+              </button>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div className="mb-4 flex gap-1 border-b border-slate-200">
             <button
-              onClick={openAddModal}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              onClick={() => setActiveTab('owner')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'owner'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add
+              Owner
+            </button>
+            <button
+              onClick={() => setActiveTab('owner-type')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'owner-type'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Owner Type
             </button>
           </div>
 
           {/* Search Bar */}
-          <div className="relative w-full max-w-md">
-            <input
-              type="text"
-              placeholder="Search by name or owner type..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  fetchOwners()
-                }
-              }}
-              className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <svg
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            {searchQuery && (
-              <button
-                onClick={() => {
-                  setSearchQuery('')
-                  setCurrentPage(1)
+          {activeTab === 'owner' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchOwners()
+                  }
                 }}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
-                title="Clear search"
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('')
+                    setCurrentPage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab === 'owner-type' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={ownerTypeSearchQuery}
+                onChange={(e) => setOwnerTypeSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchOwnerTypesPaginated()
+                  }
+                }}
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {ownerTypeSearchQuery && (
+                <button
+                  onClick={() => {
+                    setOwnerTypeSearchQuery('')
+                    setOwnerTypePage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Error Message */}
@@ -580,6 +846,7 @@ export function OwnerList() {
         )}
 
         {/* Table Container */}
+        {activeTab === 'owner' && (
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           {/* Fixed Header */}
           <div className="flex-shrink-0 overflow-hidden">
@@ -793,6 +1060,85 @@ export function OwnerList() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Owner Type Table */}
+        {activeTab === 'owner-type' && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Name</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Description</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-500">Loading...</td>
+                    </tr>
+                  ) : ownerTypes.length > 0 ? (
+                    ownerTypes.map((type) => (
+                      <tr key={type.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-sm text-slate-900">{type.name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{type.description || '-'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingOwnerType(type)
+                                setOwnerTypeFormData({ name: type.name, description: type.description || '' })
+                                setShowOwnerTypeModal(true)
+                              }}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                              title="Edit"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setDeletingOwnerType(type)
+                                setShowDeleteOwnerTypeModal(true)
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-sm text-slate-500">No owner types found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {ownerTypeTotalCount > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setOwnerTypePage(1)} disabled={ownerTypePage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;&lt;&lt;</button>
+                  <button onClick={() => setOwnerTypePage(p => Math.max(1, p - 1))} disabled={ownerTypePage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;</button>
+                  <button disabled className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium cursor-default">{ownerTypePage}</button>
+                  <button onClick={() => setOwnerTypePage(p => Math.min(ownerTypeTotalPages, p + 1))} disabled={ownerTypePage === ownerTypeTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;</button>
+                  <button onClick={() => setOwnerTypePage(ownerTypeTotalPages)} disabled={ownerTypePage === ownerTypeTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;&gt;&gt;</button>
+                </div>
+                <div className="text-sm text-slate-600">
+                  Showing {((ownerTypePage - 1) * pageSize) + 1} to {Math.min(ownerTypePage * pageSize, ownerTypeTotalCount)} of {ownerTypeTotalCount} records
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Add/Edit Modal */}
@@ -828,7 +1174,7 @@ export function OwnerList() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="e.g., Hout"
+                  placeholder="Please enter name"
                   required
                 />
               </div>
@@ -848,7 +1194,7 @@ export function OwnerList() {
                         disabled={ownerTypes.length === 0}
                       >
                         <option value="">
-                          {ownerTypes.length === 0 ? 'Loading Owner Types...' : 'Select Owner Type'}
+                          {ownerTypes.length === 0 ? 'Loading Owner Types...' : 'Please select owner type'}
                         </option>
                         {ownerTypes.map((ot) => (
                           <option key={ot.id} value={ot.id}>
@@ -893,7 +1239,7 @@ export function OwnerList() {
                         value={newOwnerTypeName}
                         onChange={(e) => setNewOwnerTypeName(e.target.value)}
                         className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                        placeholder="Enter Owner Type name"
+                        placeholder="Please enter owner type name"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
@@ -907,7 +1253,7 @@ export function OwnerList() {
                         value={newOwnerTypeDescription}
                         onChange={(e) => setNewOwnerTypeDescription(e.target.value)}
                         className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                        placeholder="Enter description (optional)"
+                        placeholder="Please enter description"
                         rows={2}
                       />
                     </div>
@@ -1008,6 +1354,47 @@ export function OwnerList() {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Owner Type Modal */}
+      {showOwnerTypeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-blue-600 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">{editingOwnerType ? 'Edit Owner Type' : 'Add Owner Type'}</h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={ownerTypeFormData.name} onChange={(e) => setOwnerTypeFormData({ ...ownerTypeFormData, name: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+                  <textarea value={ownerTypeFormData.description} onChange={(e) => setOwnerTypeFormData({ ...ownerTypeFormData, description: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows={3} />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 mt-6">
+                <button onClick={() => { setShowOwnerTypeModal(false); setEditingOwnerType(null); setOwnerTypeFormData({ name: '', description: '' }) }} className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium">Cancel</button>
+                <button onClick={editingOwnerType ? handleUpdateOwnerType : handleAddOwnerType} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">{editingOwnerType ? 'Update' : 'Add'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Owner Type Modal */}
+      {showDeleteOwnerTypeModal && deletingOwnerType && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Owner Type</h2>
+            <p className="text-sm text-slate-600 mb-6">Are you sure you want to delete "{deletingOwnerType.name}"?</p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => { setShowDeleteOwnerTypeModal(false); setDeletingOwnerType(null) }} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">Cancel</button>
+              <button onClick={handleDeleteOwnerType} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
             </div>
           </div>
         </div>

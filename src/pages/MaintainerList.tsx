@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Maintainer = {
   id: string
@@ -17,8 +18,34 @@ type MaintainerType = {
   name: string
 }
 
-const API_BASE_URL = 'http://localhost:5092/api/Maintainer'
-const MAINTAINER_TYPE_API_URL = 'http://localhost:5092/api/MaintainerType'
+type MaintenanceRecord = {
+  id: string
+  name: string
+  assetId: string
+  maintainerId: string
+  assetName?: string
+  maintainerName?: string
+}
+
+type MaintenancePart = {
+  id: string
+  name: string
+  description: string
+  maintenanceRecordId: string
+  maintenanceRecordName?: string
+}
+
+type Asset = {
+  id: string
+  name: string
+  serialNumber: string
+}
+
+const API_BASE_URL = `${API_BASE_URLS.AMS}/Maintainer`
+const MAINTAINER_TYPE_API_URL = `${API_BASE_URLS.AMS}/MaintainerType`
+const MAINTENANCE_RECORD_API_URL = `${API_BASE_URLS.AMS}/MaintenanceRecord`
+const MAINTENANCE_PART_API_URL = `${API_BASE_URLS.AMS}/MaintenacePart`
+const ASSET_API_URL = `${API_BASE_URLS.AMS}/Assets`
 
 export function MaintainerList() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -26,34 +53,76 @@ export function MaintainerList() {
   // Read initial state from URL
   const pageFromUrl = parseInt(searchParams.get('page') || '1', 10)
   const searchFromUrl = searchParams.get('search') || ''
+  const tabFromUrl = (searchParams.get('tab') || 'maintainer') as 'maintainer' | 'maintainer-type' | 'maintenance-record' | 'maintenance-part'
+  const maintainerTypePageFromUrl = parseInt(searchParams.get('maintainerTypePage') || '1', 10)
+  const recordPageFromUrl = parseInt(searchParams.get('recordPage') || '1', 10)
+  const partPageFromUrl = parseInt(searchParams.get('partPage') || '1', 10)
+  const maintainerTypeSearchFromUrl = searchParams.get('maintainerTypeSearch') || ''
+  const recordSearchFromUrl = searchParams.get('recordSearch') || ''
+  const partSearchFromUrl = searchParams.get('partSearch') || ''
   
   const [maintainers, setMaintainers] = useState<Maintainer[]>([])
   const [maintainerTypes, setMaintainerTypes] = useState<MaintainerType[]>([])
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([])
+  const [maintenanceParts, setMaintenanceParts] = useState<MaintenancePart[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(searchFromUrl)
+  const [maintainerTypeSearchQuery, setMaintainerTypeSearchQuery] = useState(maintainerTypeSearchFromUrl)
+  const [recordSearchQuery, setRecordSearchQuery] = useState(recordSearchFromUrl)
+  const [partSearchQuery, setPartSearchQuery] = useState(partSearchFromUrl)
   const [currentPage, setCurrentPage] = useState(pageFromUrl)
   const [pageSize] = useState(12)
   const [totalCount, setTotalCount] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [activeTab, setActiveTab] = useState<'maintainer' | 'maintainer-type' | 'maintenance-record' | 'maintenance-part'>(tabFromUrl)
+  
+  // Pagination for each tab
+  const [maintainerTypePage, setMaintainerTypePage] = useState(maintainerTypePageFromUrl)
+  const [maintainerTypeTotalCount, setMaintainerTypeTotalCount] = useState(0)
+  const [maintainerTypeTotalPages, setMaintainerTypeTotalPages] = useState(1)
+  
+  const [recordPage, setRecordPage] = useState(recordPageFromUrl)
+  const [recordTotalCount, setRecordTotalCount] = useState(0)
+  const [recordTotalPages, setRecordTotalPages] = useState(1)
+  
+  const [partPage, setPartPage] = useState(partPageFromUrl)
+  const [partTotalCount, setPartTotalCount] = useState(0)
+  const [partTotalPages, setPartTotalPages] = useState(1)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPositionRef = useRef<number>(0)
   const editingMaintainerIdRef = useRef<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showCreateMaintainerType, setShowCreateMaintainerType] = useState(false)
+  const [showMaintainerTypeModal, setShowMaintainerTypeModal] = useState(false)
+  const [showRecordModal, setShowRecordModal] = useState(false)
+  const [showPartModal, setShowPartModal] = useState(false)
+  const [showDeleteMaintainerTypeModal, setShowDeleteMaintainerTypeModal] = useState(false)
+  const [showDeleteRecordModal, setShowDeleteRecordModal] = useState(false)
+  const [showDeletePartModal, setShowDeletePartModal] = useState(false)
   const [newMaintainerTypeName, setNewMaintainerTypeName] = useState('')
   const [creatingMaintainerType, setCreatingMaintainerType] = useState(false)
   const [deletingMaintainer, setDeletingMaintainer] = useState<Maintainer | null>(null)
   const [editingMaintainer, setEditingMaintainer] = useState<Maintainer | null>(null)
+  const [editingMaintainerType, setEditingMaintainerType] = useState<MaintainerType | null>(null)
+  const [editingRecord, setEditingRecord] = useState<MaintenanceRecord | null>(null)
+  const [editingPart, setEditingPart] = useState<MaintenancePart | null>(null)
+  const [deletingMaintainerType, setDeletingMaintainerType] = useState<MaintainerType | null>(null)
+  const [deletingRecord, setDeletingRecord] = useState<MaintenanceRecord | null>(null)
+  const [deletingPart, setDeletingPart] = useState<MaintenancePart | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     maintainerTypeId: '',
   })
+  const [maintainerTypeFormData, setMaintainerTypeFormData] = useState({ name: '' })
+  const [recordFormData, setRecordFormData] = useState({ name: '', assetId: '', maintainerId: '' })
+  const [partFormData, setPartFormData] = useState({ name: '', description: '', maintenanceRecordId: '' })
 
-  // Fetch maintainer types
+  // Fetch maintainer types (for dropdown)
   const fetchMaintainerTypes = async () => {
     try {
       const response = await axios.get(MAINTAINER_TYPE_API_URL)
@@ -62,6 +131,220 @@ export function MaintainerList() {
       }
     } catch (err) {
       console.error('Error fetching maintainer types:', err)
+    }
+  }
+
+  // Fetch maintainer types with pagination
+  const fetchMaintainerTypesPaginated = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const params: Record<string, string> = {}
+      
+      // When searching, fetch ALL maintainer types (no pagination) for client-side filtering
+      // When not searching, use server-side pagination
+      if (maintainerTypeSearchQuery.trim()) {
+        // Fetch all for client-side filtering
+      } else {
+        params.page = maintainerTypePage.toString()
+        params.pageSize = pageSize.toString()
+      }
+      
+      const response = await axios.get(MAINTAINER_TYPE_API_URL, { params })
+      const data = response.data
+      const totalCountHeader = response.headers['x-total-count'] || response.headers['X-Total-Count']
+      const totalPagesHeader = response.headers['x-total-pages'] || response.headers['X-Total-Pages']
+      
+      if (Array.isArray(data)) {
+        let filteredData = data
+        
+        // Client-side filtering when searching
+        if (maintainerTypeSearchQuery.trim()) {
+          const searchLower = maintainerTypeSearchQuery.trim().toLowerCase()
+          filteredData = data.filter((type: MaintainerType) => {
+            return type.name.toLowerCase().includes(searchLower)
+          })
+        }
+        
+        // Update pagination state from response headers (only if not searching)
+        if (!maintainerTypeSearchQuery.trim()) {
+          if (totalCountHeader) {
+            setMaintainerTypeTotalCount(parseInt(totalCountHeader, 10))
+            if (totalPagesHeader) {
+              setMaintainerTypeTotalPages(parseInt(totalPagesHeader, 10))
+            } else {
+              setMaintainerTypeTotalPages(Math.ceil(parseInt(totalCountHeader, 10) / pageSize) || 1)
+            }
+          } else {
+            setMaintainerTypeTotalCount(data.length)
+            setMaintainerTypeTotalPages(Math.ceil(data.length / pageSize) || 1)
+          }
+        } else {
+          // When searching, update count based on filtered results
+          setMaintainerTypeTotalCount(filteredData.length)
+          setMaintainerTypeTotalPages(1)
+          if (maintainerTypePage !== 1) {
+            setMaintainerTypePage(1)
+          }
+        }
+        
+        setMaintainerTypes(filteredData)
+      }
+    } catch (err) {
+      console.error('Error fetching maintainer types:', err)
+      setError('Failed to fetch maintainer types')
+      setMaintainerTypes([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch assets
+  const fetchAssets = async () => {
+    try {
+      const response = await axios.get(ASSET_API_URL)
+      if (Array.isArray(response.data)) {
+        setAssets(response.data)
+      }
+    } catch (err) {
+      console.error('Error fetching assets:', err)
+      setAssets([])
+    }
+  }
+
+  // Fetch maintenance records with pagination
+  const fetchMaintenanceRecords = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const params: Record<string, string> = {}
+      
+      // When searching, fetch ALL records (no pagination) for client-side filtering
+      // When not searching, use server-side pagination
+      if (recordSearchQuery.trim()) {
+        // Fetch all for client-side filtering
+      } else {
+        params.page = recordPage.toString()
+        params.pageSize = pageSize.toString()
+      }
+      
+      const response = await axios.get(MAINTENANCE_RECORD_API_URL, { params })
+      const data = response.data
+      const totalCountHeader = response.headers['x-total-count'] || response.headers['X-Total-Count']
+      const totalPagesHeader = response.headers['x-total-pages'] || response.headers['X-Total-Pages']
+      
+      if (Array.isArray(data)) {
+        let filteredData = data
+        
+        // Client-side filtering when searching
+        if (recordSearchQuery.trim()) {
+          const searchLower = recordSearchQuery.trim().toLowerCase()
+          filteredData = data.filter((record: MaintenanceRecord) => {
+            const nameMatch = record.name.toLowerCase().includes(searchLower)
+            const assetMatch = (record.assetName || getAssetName(record.assetId)).toLowerCase().includes(searchLower)
+            const maintainerMatch = (record.maintainerName || getMaintainerName(record.maintainerId)).toLowerCase().includes(searchLower)
+            return nameMatch || assetMatch || maintainerMatch
+          })
+        }
+        
+        // Update pagination state from response headers (only if not searching)
+        if (!recordSearchQuery.trim()) {
+          if (totalCountHeader) {
+            setRecordTotalCount(parseInt(totalCountHeader, 10))
+            if (totalPagesHeader) {
+              setRecordTotalPages(parseInt(totalPagesHeader, 10))
+            } else {
+              setRecordTotalPages(Math.ceil(parseInt(totalCountHeader, 10) / pageSize) || 1)
+            }
+          } else {
+            setRecordTotalCount(data.length)
+            setRecordTotalPages(Math.ceil(data.length / pageSize) || 1)
+          }
+        } else {
+          // When searching, update count based on filtered results
+          setRecordTotalCount(filteredData.length)
+          setRecordTotalPages(1)
+          if (recordPage !== 1) {
+            setRecordPage(1)
+          }
+        }
+        
+        setMaintenanceRecords(filteredData)
+      }
+    } catch (err) {
+      console.error('Error fetching maintenance records:', err)
+      setError('Failed to fetch maintenance records')
+      setMaintenanceRecords([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch maintenance parts with pagination
+  const fetchMaintenanceParts = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const params: Record<string, string> = {}
+      
+      // When searching, fetch ALL parts (no pagination) for client-side filtering
+      // When not searching, use server-side pagination
+      if (partSearchQuery.trim()) {
+        // Fetch all for client-side filtering
+      } else {
+        params.page = partPage.toString()
+        params.pageSize = pageSize.toString()
+      }
+      
+      const response = await axios.get(MAINTENANCE_PART_API_URL, { params })
+      const data = response.data
+      const totalCountHeader = response.headers['x-total-count'] || response.headers['X-Total-Count']
+      const totalPagesHeader = response.headers['x-total-pages'] || response.headers['X-Total-Pages']
+      
+      if (Array.isArray(data)) {
+        let filteredData = data
+        
+        // Client-side filtering when searching
+        if (partSearchQuery.trim()) {
+          const searchLower = partSearchQuery.trim().toLowerCase()
+          filteredData = data.filter((part: MaintenancePart) => {
+            const nameMatch = part.name.toLowerCase().includes(searchLower)
+            const descriptionMatch = (part.description || '').toLowerCase().includes(searchLower)
+            const recordMatch = (part.maintenanceRecordName || getMaintenanceRecordName(part.maintenanceRecordId)).toLowerCase().includes(searchLower)
+            return nameMatch || descriptionMatch || recordMatch
+          })
+        }
+        
+        // Update pagination state from response headers (only if not searching)
+        if (!partSearchQuery.trim()) {
+          if (totalCountHeader) {
+            setPartTotalCount(parseInt(totalCountHeader, 10))
+            if (totalPagesHeader) {
+              setPartTotalPages(parseInt(totalPagesHeader, 10))
+            } else {
+              setPartTotalPages(Math.ceil(parseInt(totalCountHeader, 10) / pageSize) || 1)
+            }
+          } else {
+            setPartTotalCount(data.length)
+            setPartTotalPages(Math.ceil(data.length / pageSize) || 1)
+          }
+        } else {
+          // When searching, update count based on filtered results
+          setPartTotalCount(filteredData.length)
+          setPartTotalPages(1)
+          if (partPage !== 1) {
+            setPartPage(1)
+          }
+        }
+        
+        setMaintenanceParts(filteredData)
+      }
+    } catch (err) {
+      console.error('Error fetching maintenance parts:', err)
+      setError('Failed to fetch maintenance parts')
+      setMaintenanceParts([])
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -119,6 +402,24 @@ export function MaintainerList() {
     if (!id) return '-'
     const maintainerType = maintainerTypes.find((mt) => mt.id === id)
     return maintainerType ? maintainerType.name : 'Loading...'
+  }
+
+  const getAssetName = (id: string | undefined) => {
+    if (!id) return 'N/A'
+    const asset = assets.find((a) => a.id === id)
+    return asset ? asset.name : 'N/A'
+  }
+
+  const getMaintainerName = (id: string | undefined) => {
+    if (!id) return 'N/A'
+    const maintainer = maintainers.find((m) => m.id === id)
+    return maintainer ? maintainer.name : 'N/A'
+  }
+
+  const getMaintenanceRecordName = (id: string | undefined) => {
+    if (!id) return 'N/A'
+    const record = maintenanceRecords.find((r) => r.id === id)
+    return record ? record.name : 'N/A'
   }
 
   // Fetch maintainers from API with pagination
@@ -397,6 +698,174 @@ export function MaintainerList() {
     }
   }
 
+  // ========== Maintainer Type CRUD Operations ==========
+  const handleAddMaintainerType = async () => {
+    if (!maintainerTypeFormData.name.trim()) {
+      setError('Name is required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.post(MAINTAINER_TYPE_API_URL, {
+        name: maintainerTypeFormData.name.trim(),
+      })
+      await fetchMaintainerTypesPaginated()
+      await fetchMaintainerTypes() // Also update dropdown
+      setShowMaintainerTypeModal(false)
+      setMaintainerTypeFormData({ name: '' })
+      setEditingMaintainerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to add maintainer type')
+    }
+  }
+
+  const handleUpdateMaintainerType = async () => {
+    if (!editingMaintainerType || !maintainerTypeFormData.name.trim()) {
+      setError('Name is required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.put(`${MAINTAINER_TYPE_API_URL}/${editingMaintainerType.id}`, {
+        name: maintainerTypeFormData.name.trim(),
+      })
+      await fetchMaintainerTypesPaginated()
+      await fetchMaintainerTypes() // Also update dropdown
+      setShowMaintainerTypeModal(false)
+      setMaintainerTypeFormData({ name: '' })
+      setEditingMaintainerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to update maintainer type')
+    }
+  }
+
+  const handleDeleteMaintainerType = async () => {
+    if (!deletingMaintainerType) return
+    try {
+      setError(null)
+      await axios.delete(`${MAINTAINER_TYPE_API_URL}/${deletingMaintainerType.id}`)
+      await fetchMaintainerTypesPaginated()
+      await fetchMaintainerTypes() // Also update dropdown
+      setShowDeleteMaintainerTypeModal(false)
+      setDeletingMaintainerType(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to delete maintainer type')
+    }
+  }
+
+  // ========== Maintenance Record CRUD Operations ==========
+  const handleAddRecord = async () => {
+    if (!recordFormData.name.trim() || !recordFormData.assetId || !recordFormData.maintainerId) {
+      setError('Name, Asset, and Maintainer are required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.post(MAINTENANCE_RECORD_API_URL, {
+        name: recordFormData.name.trim(),
+        assetId: recordFormData.assetId,
+        maintainerId: recordFormData.maintainerId,
+      })
+      await fetchMaintenanceRecords()
+      setShowRecordModal(false)
+      setRecordFormData({ name: '', assetId: '', maintainerId: '' })
+      setEditingRecord(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to add maintenance record')
+    }
+  }
+
+  const handleUpdateRecord = async () => {
+    if (!editingRecord || !recordFormData.name.trim() || !recordFormData.assetId || !recordFormData.maintainerId) {
+      setError('Name, Asset, and Maintainer are required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.put(`${MAINTENANCE_RECORD_API_URL}/${editingRecord.id}`, {
+        name: recordFormData.name.trim(),
+        assetId: recordFormData.assetId,
+        maintainerId: recordFormData.maintainerId,
+      })
+      await fetchMaintenanceRecords()
+      setShowRecordModal(false)
+      setRecordFormData({ name: '', assetId: '', maintainerId: '' })
+      setEditingRecord(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to update maintenance record')
+    }
+  }
+
+  const handleDeleteRecord = async () => {
+    if (!deletingRecord) return
+    try {
+      setError(null)
+      await axios.delete(`${MAINTENANCE_RECORD_API_URL}/${deletingRecord.id}`)
+      await fetchMaintenanceRecords()
+      setShowDeleteRecordModal(false)
+      setDeletingRecord(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to delete maintenance record')
+    }
+  }
+
+  // ========== Maintenance Part CRUD Operations ==========
+  const handleAddPart = async () => {
+    if (!partFormData.name.trim() || !partFormData.maintenanceRecordId) {
+      setError('Name and Maintenance Record are required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.post(MAINTENANCE_PART_API_URL, {
+        name: partFormData.name.trim(),
+        description: partFormData.description.trim(),
+        maintenanceRecordId: partFormData.maintenanceRecordId,
+      })
+      await fetchMaintenanceParts()
+      setShowPartModal(false)
+      setPartFormData({ name: '', description: '', maintenanceRecordId: '' })
+      setEditingPart(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to add maintenance part')
+    }
+  }
+
+  const handleUpdatePart = async () => {
+    if (!editingPart || !partFormData.name.trim() || !partFormData.maintenanceRecordId) {
+      setError('Name and Maintenance Record are required')
+      return
+    }
+    try {
+      setError(null)
+      await axios.put(`${MAINTENANCE_PART_API_URL}/${editingPart.id}`, {
+        name: partFormData.name.trim(),
+        description: partFormData.description.trim(),
+        maintenanceRecordId: partFormData.maintenanceRecordId,
+      })
+      await fetchMaintenanceParts()
+      setShowPartModal(false)
+      setPartFormData({ name: '', description: '', maintenanceRecordId: '' })
+      setEditingPart(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to update maintenance part')
+    }
+  }
+
+  const handleDeletePart = async () => {
+    if (!deletingPart) return
+    try {
+      setError(null)
+      await axios.delete(`${MAINTENANCE_PART_API_URL}/${deletingPart.id}`)
+      await fetchMaintenanceParts()
+      setShowDeletePartModal(false)
+      setDeletingPart(null)
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || 'Failed to delete maintenance part')
+    }
+  }
+
+
   // Open modal for add
   const openAddModal = () => {
     setEditingMaintainer(null)
@@ -454,23 +923,81 @@ export function MaintainerList() {
   // Initial fetch on mount - fetch maintainer types first, then maintainers
   useEffect(() => {
     const loadData = async () => {
-      await fetchMaintainerTypes()
-      await fetchMaintainers()
+      await Promise.all([
+        fetchMaintainerTypes(),
+        fetchMaintainers(),
+        fetchAssets(),
+        fetchMaintenanceRecordsForDropdown(),
+      ])
     }
     loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update URL when page or search changes
+  // Fetch data based on active tab
+  useEffect(() => {
+    if (activeTab === 'maintainer-type') {
+      fetchMaintainerTypesPaginated()
+    } else if (activeTab === 'maintenance-record') {
+      fetchMaintenanceRecords()
+    } else if (activeTab === 'maintenance-part') {
+      fetchMaintenanceParts()
+      // Also fetch maintenance records for the dropdown
+      if (maintenanceRecords.length === 0) {
+        fetchMaintenanceRecords()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, maintainerTypePage, recordPage, partPage])
+
+  // Fetch maintenance records for dropdown (when not paginated)
+  const fetchMaintenanceRecordsForDropdown = async () => {
+    try {
+      const response = await axios.get(MAINTENANCE_RECORD_API_URL)
+      if (Array.isArray(response.data)) {
+        setMaintenanceRecords(response.data)
+      }
+    } catch (err) {
+      console.error('Error fetching maintenance records:', err)
+    }
+  }
+
+  // Update URL when page, search, tab, or pagination changes
   useEffect(() => {
     const params = new URLSearchParams()
     
-    if (currentPage > 1) {
-      params.set('page', currentPage.toString())
-    }
+    // Always set the active tab
+    params.set('tab', activeTab)
     
-    if (searchQuery.trim()) {
-      params.set('search', searchQuery.trim())
+    // Set page based on active tab
+    if (activeTab === 'maintainer') {
+      if (currentPage > 1) {
+        params.set('page', currentPage.toString())
+      }
+      if (searchQuery.trim()) {
+        params.set('search', searchQuery.trim())
+      }
+    } else if (activeTab === 'maintainer-type') {
+      if (maintainerTypePage > 1) {
+        params.set('maintainerTypePage', maintainerTypePage.toString())
+      }
+      if (maintainerTypeSearchQuery.trim()) {
+        params.set('maintainerTypeSearch', maintainerTypeSearchQuery.trim())
+      }
+    } else if (activeTab === 'maintenance-record') {
+      if (recordPage > 1) {
+        params.set('recordPage', recordPage.toString())
+      }
+      if (recordSearchQuery.trim()) {
+        params.set('recordSearch', recordSearchQuery.trim())
+      }
+    } else if (activeTab === 'maintenance-part') {
+      if (partPage > 1) {
+        params.set('partPage', partPage.toString())
+      }
+      if (partSearchQuery.trim()) {
+        params.set('partSearch', partSearchQuery.trim())
+      }
     }
     
     const currentUrl = searchParams.toString()
@@ -478,7 +1005,7 @@ export function MaintainerList() {
     if (currentUrl !== newUrl) {
       setSearchParams(params, { replace: true })
     }
-  }, [currentPage, searchQuery, searchParams, setSearchParams])
+  }, [activeTab, currentPage, maintainerTypePage, recordPage, partPage, searchQuery, maintainerTypeSearchQuery, recordSearchQuery, partSearchQuery, searchParams, setSearchParams])
 
   // Reset to page 1 when search changes
   useEffect(() => {
@@ -491,15 +1018,50 @@ export function MaintainerList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery])
 
-  // Debounced search effect
+  // Debounced search effects
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      fetchMaintainers()
+      if (activeTab === 'maintainer') {
+        fetchMaintainers()
+      }
     }, 500)
 
     return () => clearTimeout(timeoutId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery])
+  }, [currentPage, searchQuery, activeTab])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (activeTab === 'maintainer-type') {
+        fetchMaintainerTypesPaginated()
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maintainerTypeSearchQuery, activeTab])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (activeTab === 'maintenance-record') {
+        fetchMaintenanceRecords()
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordSearchQuery, activeTab])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (activeTab === 'maintenance-part') {
+        fetchMaintenanceParts()
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partSearchQuery, activeTab])
 
   return (
     <div className="flex min-h-screen">
@@ -509,62 +1071,292 @@ export function MaintainerList() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-blue-600">Maintainer</h1>
+              <h1 className="text-2xl font-bold text-blue-600">
+                {activeTab === 'maintainer' && 'Maintainer'}
+                {activeTab === 'maintainer-type' && 'Maintainer Type'}
+                {activeTab === 'maintenance-record' && 'Maintenance Record'}
+                {activeTab === 'maintenance-part' && 'Maintenance Part'}
+              </h1>
             </div>
+            {activeTab === 'maintainer' && (
+              <button
+                onClick={openAddModal}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            )}
+            {activeTab === 'maintainer-type' && (
+              <button
+                onClick={() => {
+                  setEditingMaintainerType(null)
+                  setMaintainerTypeFormData({ name: '' })
+                  setShowMaintainerTypeModal(true)
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Maintainer Type
+              </button>
+            )}
+            {activeTab === 'maintenance-record' && (
+              <button
+                onClick={() => {
+                  setEditingRecord(null)
+                  setRecordFormData({ name: '', assetId: '', maintainerId: '' })
+                  setShowRecordModal(true)
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Record
+              </button>
+            )}
+            {activeTab === 'maintenance-part' && (
+              <button
+                onClick={() => {
+                  setEditingPart(null)
+                  setPartFormData({ name: '', description: '', maintenanceRecordId: '' })
+                  setShowPartModal(true)
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Part
+              </button>
+            )}
+          </div>
+
+          {/* Tabs */}
+          <div className="mb-4 flex gap-1 border-b border-slate-200">
             <button
-              onClick={openAddModal}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              onClick={() => setActiveTab('maintainer')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'maintainer'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add
+              Maintainer
+            </button>
+            <button
+              onClick={() => setActiveTab('maintainer-type')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'maintainer-type'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Maintainer Type
+            </button>
+            <button
+              onClick={() => setActiveTab('maintenance-record')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'maintenance-record'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Maintenance Record
+            </button>
+            <button
+              onClick={() => setActiveTab('maintenance-part')}
+              className={`px-4 py-2 text-sm font-medium transition ${
+                activeTab === 'maintenance-part'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Maintenance Part
             </button>
           </div>
 
           {/* Search Bar */}
-          <div className="relative w-full max-w-md">
-            <input
-              type="text"
-              placeholder="Search by name, email, phone, or maintainer type..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  fetchMaintainers()
-                }
-              }}
-              className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            <svg
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
-            {searchQuery && (
-              <button
-                onClick={() => {
-                  setSearchQuery('')
-                  setCurrentPage(1)
+          {activeTab === 'maintainer' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchMaintainers()
+                  }
                 }}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
-                title="Clear search"
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('')
+                    setCurrentPage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab === 'maintainer-type' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={maintainerTypeSearchQuery}
+                onChange={(e) => setMaintainerTypeSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchMaintainerTypesPaginated()
+                  }
+                }}
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {maintainerTypeSearchQuery && (
+                <button
+                  onClick={() => {
+                    setMaintainerTypeSearchQuery('')
+                    setMaintainerTypePage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab === 'maintenance-record' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={recordSearchQuery}
+                onChange={(e) => setRecordSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchMaintenanceRecords()
+                  }
+                }}
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {recordSearchQuery && (
+                <button
+                  onClick={() => {
+                    setRecordSearchQuery('')
+                    setRecordPage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+          {activeTab === 'maintenance-part' && (
+            <div className="relative w-full max-w-md">
+              <input
+                type="text"
+                placeholder="Search"
+                value={partSearchQuery}
+                onChange={(e) => setPartSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    fetchMaintenanceParts()
+                  }
+                }}
+                className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              {partSearchQuery && (
+                <button
+                  onClick={() => {
+                    setPartSearchQuery('')
+                    setPartPage(1)
+                  }}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
+                  title="Clear search"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Error Message */}
@@ -576,6 +1368,7 @@ export function MaintainerList() {
         )}
 
         {/* Table Container */}
+        {activeTab === 'maintainer' && (
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex flex-col">
           {/* Fixed Header */}
           <div className="flex-shrink-0 overflow-hidden">
@@ -802,6 +1595,186 @@ export function MaintainerList() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Maintainer Type Table */}
+        {activeTab === 'maintainer-type' && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Name</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={2} className="px-6 py-8 text-center text-sm text-slate-500">Loading...</td>
+                    </tr>
+                  ) : maintainerTypes.length > 0 ? (
+                    maintainerTypes.map((type) => (
+                      <tr key={type.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-sm text-slate-900">{type.name}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => { setEditingMaintainerType(type); setMaintainerTypeFormData({ name: type.name }); setShowMaintainerTypeModal(true) }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            <button onClick={() => { setDeletingMaintainerType(type); setShowDeleteMaintainerTypeModal(true) }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={2} className="px-6 py-8 text-center text-sm text-slate-500">No maintainer types found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {maintainerTypeTotalCount > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setMaintainerTypePage(1)} disabled={maintainerTypePage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;&lt;&lt;</button>
+                  <button onClick={() => setMaintainerTypePage(p => Math.max(1, p - 1))} disabled={maintainerTypePage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;</button>
+                  <button disabled className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium cursor-default">{maintainerTypePage}</button>
+                  <button onClick={() => setMaintainerTypePage(p => Math.min(maintainerTypeTotalPages, p + 1))} disabled={maintainerTypePage === maintainerTypeTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;</button>
+                  <button onClick={() => setMaintainerTypePage(maintainerTypeTotalPages)} disabled={maintainerTypePage === maintainerTypeTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;&gt;&gt;</button>
+                </div>
+                <div className="text-sm text-slate-600">
+                  Showing {((maintainerTypePage - 1) * pageSize) + 1} to {Math.min(maintainerTypePage * pageSize, maintainerTypeTotalCount)} of {maintainerTypeTotalCount} records
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Maintenance Record Table */}
+        {activeTab === 'maintenance-record' && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Name</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Asset</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Maintainer</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">Loading...</td>
+                    </tr>
+                  ) : maintenanceRecords.length > 0 ? (
+                    maintenanceRecords.map((record) => (
+                      <tr key={record.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-sm text-slate-900">{record.name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{record.assetName || getAssetName(record.assetId)}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{record.maintainerName || getMaintainerName(record.maintainerId)}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => { setEditingRecord(record); setRecordFormData({ name: record.name, assetId: record.assetId, maintainerId: record.maintainerId }); setShowRecordModal(true) }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            <button onClick={() => { setDeletingRecord(record); setShowDeleteRecordModal(true) }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">No maintenance records found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {recordTotalCount > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setRecordPage(1)} disabled={recordPage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;&lt;&lt;</button>
+                  <button onClick={() => setRecordPage(p => Math.max(1, p - 1))} disabled={recordPage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;</button>
+                  <button disabled className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium cursor-default">{recordPage}</button>
+                  <button onClick={() => setRecordPage(p => Math.min(recordTotalPages, p + 1))} disabled={recordPage === recordTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;</button>
+                  <button onClick={() => setRecordPage(recordTotalPages)} disabled={recordPage === recordTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;&gt;&gt;</button>
+                </div>
+                <div className="text-sm text-slate-600">
+                  Showing {((recordPage - 1) * pageSize) + 1} to {Math.min(recordPage * pageSize, recordTotalCount)} of {recordTotalCount} records
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Maintenance Part Table */}
+        {activeTab === 'maintenance-part' && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Name</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Description</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase">Maintenance Record</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-slate-700 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">Loading...</td>
+                    </tr>
+                  ) : maintenanceParts.length > 0 ? (
+                    maintenanceParts.map((part) => (
+                      <tr key={part.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-sm text-slate-900">{part.name}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{part.description || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-700">{part.maintenanceRecordName || getMaintenanceRecordName(part.maintenanceRecordId)}</td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center justify-end gap-2">
+                            <button onClick={() => { setEditingPart(part); setPartFormData({ name: part.name, description: part.description || '', maintenanceRecordId: part.maintenanceRecordId }); setShowPartModal(true) }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Edit">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            <button onClick={() => { setDeletingPart(part); setShowDeletePartModal(true) }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition" title="Delete">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-8 text-center text-sm text-slate-500">No maintenance parts found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {partTotalCount > 0 && (
+              <div className="px-6 py-4 border-t border-slate-200 flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setPartPage(1)} disabled={partPage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;&lt;&lt;</button>
+                  <button onClick={() => setPartPage(p => Math.max(1, p - 1))} disabled={partPage === 1} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&lt;</button>
+                  <button disabled className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium cursor-default">{partPage}</button>
+                  <button onClick={() => setPartPage(p => Math.min(partTotalPages, p + 1))} disabled={partPage === partTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;</button>
+                  <button onClick={() => setPartPage(partTotalPages)} disabled={partPage === partTotalPages} className="px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 bg-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 transition">&gt;&gt;&gt;</button>
+                </div>
+                <div className="text-sm text-slate-600">
+                  Showing {((partPage - 1) * pageSize) + 1} to {Math.min(partPage * pageSize, partTotalCount)} of {partTotalCount} records
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Add/Edit Modal */}
@@ -837,7 +1810,7 @@ export function MaintainerList() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="e.g., Tech Maintenance Services"
+                  placeholder="Please enter name"
                   required
                 />
               </div>
@@ -852,7 +1825,7 @@ export function MaintainerList() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="support@example.com"
+                    placeholder="Please enter email"
                   />
                 </div>
                 <div>
@@ -864,7 +1837,7 @@ export function MaintainerList() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="555-9876"
+                    placeholder="Please enter phone number"
                   />
                 </div>
               </div>
@@ -884,7 +1857,7 @@ export function MaintainerList() {
                         disabled={maintainerTypes.length === 0}
                       >
                         <option value="">
-                          {maintainerTypes.length === 0 ? 'Loading Maintainer Types...' : 'Select Maintainer Type'}
+                          {maintainerTypes.length === 0 ? 'Loading Maintainer Types...' : 'Please select maintainer type'}
                         </option>
                         {maintainerTypes.map((mt) => (
                           <option key={mt.id} value={mt.id}>
@@ -928,7 +1901,7 @@ export function MaintainerList() {
                         value={newMaintainerTypeName}
                         onChange={(e) => setNewMaintainerTypeName(e.target.value)}
                         className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                        placeholder="Enter Maintainer Type name"
+                        placeholder="Please enter maintainer type name"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault()
@@ -1034,6 +2007,140 @@ export function MaintainerList() {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintainer Type Modal */}
+      {showMaintainerTypeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-blue-600 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">{editingMaintainerType ? 'Edit Maintainer Type' : 'Add Maintainer Type'}</h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={maintainerTypeFormData.name} onChange={(e) => setMaintainerTypeFormData({ name: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 mt-6">
+                <button onClick={() => { setShowMaintainerTypeModal(false); setEditingMaintainerType(null); setMaintainerTypeFormData({ name: '' }) }} className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium">Cancel</button>
+                <button onClick={editingMaintainerType ? handleUpdateMaintainerType : handleAddMaintainerType} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">{editingMaintainerType ? 'Update' : 'Add'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance Record Modal */}
+      {showRecordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-blue-600 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">{editingRecord ? 'Edit Maintenance Record' : 'Add Maintenance Record'}</h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={recordFormData.name} onChange={(e) => setRecordFormData({ ...recordFormData, name: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Asset <span className="text-red-500">*</span></label>
+                  <select value={recordFormData.assetId} onChange={(e) => setRecordFormData({ ...recordFormData, assetId: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <option value="">Please select asset</option>
+                    {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Maintainer <span className="text-red-500">*</span></label>
+                  <select value={recordFormData.maintainerId} onChange={(e) => setRecordFormData({ ...recordFormData, maintainerId: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <option value="">Please select maintainer</option>
+                    {maintainers.map((maintainer) => <option key={maintainer.id} value={maintainer.id}>{maintainer.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 mt-6">
+                <button onClick={() => { setShowRecordModal(false); setEditingRecord(null); setRecordFormData({ name: '', assetId: '', maintainerId: '' }) }} className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium">Cancel</button>
+                <button onClick={editingRecord ? handleUpdateRecord : handleAddRecord} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">{editingRecord ? 'Update' : 'Add'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Maintenance Part Modal */}
+      {showPartModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-blue-600 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">{editingPart ? 'Edit Maintenance Part' : 'Add Maintenance Part'}</h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={partFormData.name} onChange={(e) => setPartFormData({ ...partFormData, name: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Description</label>
+                  <textarea value={partFormData.description} onChange={(e) => setPartFormData({ ...partFormData, description: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows={3} />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Maintenance Record <span className="text-red-500">*</span></label>
+                  <select value={partFormData.maintenanceRecordId} onChange={(e) => setPartFormData({ ...partFormData, maintenanceRecordId: e.target.value })} className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+                    <option value="">Please select maintenance record</option>
+                    {maintenanceRecords.map((record) => <option key={record.id} value={record.id}>{record.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 mt-6">
+                <button onClick={() => { setShowPartModal(false); setEditingPart(null); setPartFormData({ name: '', description: '', maintenanceRecordId: '' }) }} className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition font-medium">Cancel</button>
+                <button onClick={editingPart ? handleUpdatePart : handleAddPart} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">{editingPart ? 'Update' : 'Add'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modals */}
+      {showDeleteMaintainerTypeModal && deletingMaintainerType && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Maintainer Type</h2>
+            <p className="text-sm text-slate-600 mb-6">Are you sure you want to delete "{deletingMaintainerType.name}"?</p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => { setShowDeleteMaintainerTypeModal(false); setDeletingMaintainerType(null) }} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">Cancel</button>
+              <button onClick={handleDeleteMaintainerType} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteRecordModal && deletingRecord && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Maintenance Record</h2>
+            <p className="text-sm text-slate-600 mb-6">Are you sure you want to delete "{deletingRecord.name}"?</p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => { setShowDeleteRecordModal(false); setDeletingRecord(null) }} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">Cancel</button>
+              <button onClick={handleDeleteRecord} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeletePartModal && deletingPart && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Delete Maintenance Part</h2>
+            <p className="text-sm text-slate-600 mb-6">Are you sure you want to delete "{deletingPart.name}"?</p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => { setShowDeletePartModal(false); setDeletingPart(null) }} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition">Cancel</button>
+              <button onClick={handleDeletePart} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
             </div>
           </div>
         </div>

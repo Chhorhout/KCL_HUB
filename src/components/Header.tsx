@@ -8,7 +8,12 @@ export function Header() {
   const { logout, user } = useAuth()
   const [showLogoutModal, setShowLogoutModal] = useState(false)
 
-  const isActive = (path: string) => location.pathname === path
+  const isActive = (path: string) => {
+    if (path === '/ams') {
+      return location.pathname === '/ams' || location.pathname.startsWith('/ams/')
+    }
+    return location.pathname === path
+  }
 
   const handleLogout = () => {
     logout()
@@ -49,9 +54,17 @@ export function Header() {
           </nav>
           <div className="flex items-center gap-4">
             {user && (
-              <span className="text-base text-slate-600">
-                Welcome, <span className="font-medium text-slate-900">{user.username}</span>
-              </span>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-end">
+                  <span className="text-sm font-medium text-slate-900">{user.name}</span>
+                  <span className="text-xs text-slate-500">{user.roleName}</span>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <span className="text-blue-600 font-semibold text-sm">
+                    {user.name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              </div>
             )}
             <button
               onClick={() => setShowLogoutModal(true)}

@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { HRMSSidebar } from '../components/HRMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Employee = {
   id: string
@@ -19,8 +20,8 @@ type Department = {
   name: string
 }
 
-const API_BASE_URL = 'http://localhost:5045/api/Employee'
-const DEPARTMENT_API_URL = 'http://localhost:5045/api/Department'
+const API_BASE_URL = `${API_BASE_URLS.HRMS}/Employee`
+const DEPARTMENT_API_URL = `${API_BASE_URLS.HRMS}/Department`
 
 export function EmployeeList() {
   const navigate = useNavigate()
@@ -45,11 +46,13 @@ export function EmployeeList() {
   const editingEmployeeIdRef = useRef<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
   const [showCreateDept, setShowCreateDept] = useState(false)
   const [newDepartmentName, setNewDepartmentName] = useState('')
   const [creatingDept, setCreatingDept] = useState(false)
   const [deletingEmployee, setDeletingEmployee] = useState<Employee | null>(null)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [viewingEmployee, setViewingEmployee] = useState<Employee | null>(null)
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -614,6 +617,12 @@ export function EmployeeList() {
     }
   }
 
+  // Open profile detail modal
+  const openProfileModal = (emp: Employee) => {
+    setViewingEmployee(emp)
+    setShowProfileModal(true)
+  }
+
   // Open delete confirmation modal
   const openDeleteModal = (emp: Employee) => {
     setDeletingEmployee(emp)
@@ -829,7 +838,7 @@ export function EmployeeList() {
           <div className="relative w-full max-w-md">
             <input
               type="text"
-              placeholder="Search by employee name..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -982,6 +991,31 @@ export function EmployeeList() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openProfileModal(emp)}
+                            className="text-green-600 hover:text-green-800 p-2 rounded hover:bg-green-50 transition"
+                            title="View Profile"
+                          >
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                              />
+                            </svg>
+                          </button>
                           <button
                             onClick={() => openEditModal(emp)}
                             className="text-blue-600 hover:text-blue-800 p-2 rounded hover:bg-blue-50 transition"
@@ -1202,7 +1236,7 @@ export function EmployeeList() {
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="Enter first name"
+                    placeholder="Please enter first name"
                     required
                   />
                 </div>
@@ -1215,7 +1249,7 @@ export function EmployeeList() {
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="Enter last name"
+                    placeholder="Please enter last name"
                     required
                   />
                 </div>
@@ -1231,7 +1265,7 @@ export function EmployeeList() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="Enter email"
+                    placeholder="Please enter email"
                     required
                   />
                 </div>
@@ -1244,7 +1278,7 @@ export function EmployeeList() {
                     value={formData.phoneNumber}
                     onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                     className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                    placeholder="Enter phone number"
+                    placeholder="Please enter phone number"
                     required
                   />
                 </div>
@@ -1290,7 +1324,7 @@ export function EmployeeList() {
                         className="flex-1 px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                         required
                       >
-                        <option value="">Select a department</option>
+                        <option value="">Please select department</option>
                         {departments.map((dept) => (
                           <option key={dept.id} value={dept.id}>
                             {dept.name}
@@ -1314,7 +1348,7 @@ export function EmployeeList() {
                         value={newDepartmentName}
                         onChange={(e) => setNewDepartmentName(e.target.value)}
                         className="flex-1 px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                        placeholder="Enter new department name"
+                        placeholder="Please enter department name"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault()
@@ -1424,6 +1458,175 @@ export function EmployeeList() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Detail Modal */}
+      {showProfileModal && viewingEmployee && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center ring-4 ring-white ring-opacity-30">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">
+                      {viewingEmployee.firstName} {viewingEmployee.lastName}
+                    </h2>
+                    <p className="text-blue-100 text-sm mt-1">Employee Profile</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setViewingEmployee(null)
+                  }}
+                  className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition"
+                  title="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Profile Content */}
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Personal Information */}
+                <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Personal Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Full Name</label>
+                      <p className="text-sm font-medium text-slate-900 mt-1">
+                        {viewingEmployee.firstName} {viewingEmployee.lastName}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</label>
+                      <p className="text-sm text-slate-700 mt-1 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        {viewingEmployee.email}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Phone Number</label>
+                      <p className="text-sm text-slate-700 mt-1 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        {viewingEmployee.phoneNumber}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date of Birth</label>
+                      <p className="text-sm text-slate-700 mt-1 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {new Date(viewingEmployee.dateOfBirth).toLocaleDateString('en-US', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Employment Information */}
+                <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
+                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    Employment Information
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Department</label>
+                      <p className="text-sm text-slate-700 mt-1 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        <button
+                          onClick={() => {
+                            setShowProfileModal(false)
+                            setViewingEmployee(null)
+                            navigate(`/hrms/employee?departmentId=${viewingEmployee.departmentId}`)
+                          }}
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+                        >
+                          {getDepartmentName(viewingEmployee.departmentId)}
+                        </button>
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hire Date</label>
+                      <p className="text-sm text-slate-700 mt-1 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        {new Date(viewingEmployee.hireDate).toLocaleDateString('en-US', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric' 
+                        })}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Employee ID</label>
+                      <p className="text-sm text-slate-700 mt-1 font-mono">
+                        {viewingEmployee.id}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setViewingEmployee(null)
+                  }}
+                  className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition font-medium"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setViewingEmployee(null)
+                    openEditModal(viewingEmployee)
+                  }}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Edit Employee
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -2,13 +2,14 @@ import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
+import { API_BASE_URLS } from '../config/api'
 
 type Location = {
   id: string
   name: string
 }
 
-const API_BASE_URL = 'http://localhost:5092/api/Location'
+const API_BASE_URL = `${API_BASE_URLS.AMS}/Location`
 
 export function LocationList() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -391,7 +392,7 @@ export function LocationList() {
           <div className="relative w-full max-w-md">
             <input
               type="text"
-              placeholder="Search by name..."
+              placeholder="Search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -678,7 +679,7 @@ export function LocationList() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="e.g., Kompong Chhnang"
+                  placeholder="Please enter location name"
                   required
                 />
               </div>

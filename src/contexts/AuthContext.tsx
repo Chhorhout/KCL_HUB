@@ -1,11 +1,23 @@
+import axios from 'axios'
 import type { ReactNode } from 'react'
 import { createContext, useContext, useEffect, useState } from 'react'
+import { API_BASE_URLS } from '../config/api'
+
+const API_BASE_URL = API_BASE_URLS.IDP
+
+interface User {
+  id: string
+  name: string
+  email: string
+  roleName: string
+}
 
 interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
-  user: { username: string } | null
-  login: (username: string, password: string) => Promise<boolean>
+  user: User | null
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  register: (name: string, email: string, password: string, roleId: string) => Promise<boolean>
   logout: () => void
 }
 
@@ -14,7 +26,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [user, setUser] = useState<{ username: string } | null>(null)
+  const [user, setUser] = useState<User | null>(null)
 
   // Check if user is already logged in on mount
   useEffect(() => {
@@ -23,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const authData = JSON.parse(storedAuth)
         setIsAuthenticated(true)
-        setUser({ username: authData.username })
+        setUser(authData.user)
       } catch (error) {
         localStorage.removeItem('auth')
       }
@@ -31,19 +43,99 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false)
   }, [])
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    // Simple validation - you can replace this with actual API call
-    if (username.trim() && password.trim()) {
-      const authData = {
-        username: username.trim(),
-        timestamp: Date.now(),
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      console.log('Attempting login to:', `${API_BASE_URL}/auth/login`)
+      
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/login`,
+        {
+          email: email.trim(),
+          password: password,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 10000, // 10 second timeout
+        }
+      )
+
+      console.log('Login response received:', response.status, response.data)
+
+      if (response.data) {
+        const authData = {
+          user: response.data,
+          timestamp: Date.now(),
+        }
+        localStorage.setItem('auth', JSON.stringify(authData))
+        setIsAuthenticated(true)
+        setUser(response.data)
+        return { success: true }
       }
-      localStorage.setItem('auth', JSON.stringify(authData))
-      setIsAuthenticated(true)
-      setUser({ username: username.trim() })
-      return true
+      return { success: false, error: 'Invalid response from server' }
+    } catch (error: any) {
+      console.error('Login error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+      })
+      
+      // Extract error message from API response
+      if (error.response) {
+        // Server responded with error status
+        const errorMessage = error.response.data?.message || error.response.data?.error || error.response.statusText || 'Login failed'
+        return { success: false, error: errorMessage }
+      } else if (error.request) {
+        // Request made but no response received
+        if (error.code === 'ECONNABORTED') {
+          return { success: false, error: 'Request timeout. The server is taking too long to respond.' }
+        }
+        return { 
+          success: false, 
+          error: `Cannot connect to authentication server at ${API_BASE_URL}. Please ensure the server is running on port 5165.` 
+        }
+      } else {
+        // Error setting up request
+        return { success: false, error: error.message || 'An error occurred during login' }
+      }
     }
-    return false
+  }
+
+  const register = async (name: string, email: string, password: string, roleId: string): Promise<boolean> => {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/auth/register`,
+        {
+          name: name.trim(),
+          email: email.trim(),
+          password: password,
+          roleId: roleId,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (response.data) {
+        const authData = {
+          user: response.data,
+          timestamp: Date.now(),
+        }
+        localStorage.setItem('auth', JSON.stringify(authData))
+        setIsAuthenticated(true)
+        setUser(response.data)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Registration error:', error)
+      return false
+    }
   }
 
   const logout = () => {
@@ -53,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, login, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated, isLoading, user, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

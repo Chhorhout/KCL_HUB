@@ -3,17 +3,17 @@ import { Header } from './components/Header'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { AMSDashboard } from './pages/AMSDashboard'
+import { AssetList } from './pages/AssetList'
+import { CategoryList } from './pages/CategoryList'
 import { DepartmentList } from './pages/DepartmentList'
 import { EmployeeList } from './pages/EmployeeList'
-import { Home } from './pages/Home'
 import { HRMSDashboard } from './pages/HRMSDashboard'
 import { InvoiceList } from './pages/InvoiceList'
 import { LocationList } from './pages/LocationList'
 import { Login } from './pages/Login'
 import { MaintainerList } from './pages/MaintainerList'
-import { MaintainerTypeList } from './pages/MaintainerTypeList'
 import { OwnerList } from './pages/OwnerList'
-import { OwnerTypeList } from './pages/OwnerTypeList'
+import { Register } from './pages/Register'
 import { SupplierList } from './pages/SupplierList'
 import { TemporaryUserList } from './pages/TemporaryUserList'
 import { UserGuide } from './pages/UserGuide'
@@ -36,6 +36,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/register" element={isAuthenticated ? <Navigate to="/" replace /> : <Register />} />
       <Route
         path="/"
         element={
@@ -43,7 +44,7 @@ function AppRoutes() {
             <>
               <Header />
               <div className="pt-[73px]">
-                <Home />
+                <UserGuide />
               </div>
             </>
           </ProtectedRoute>
@@ -76,15 +77,44 @@ function AppRoutes() {
         }
       />
       <Route
-        path="/ams/owner-type"
+        path="/ams/category"
         element={
           <ProtectedRoute>
             <>
               <Header />
               <div className="pt-[73px]">
-                <OwnerTypeList />
+                <CategoryList />
               </div>
             </>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ams/asset-type"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/ams/asset" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ams/asset"
+        element={
+          <ProtectedRoute>
+            <>
+              <Header />
+              <div className="pt-[73px]">
+                <AssetList />
+              </div>
+            </>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ams/owner-type"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/ams/owner" replace />
           </ProtectedRoute>
         }
       />
@@ -131,12 +161,7 @@ function AppRoutes() {
         path="/ams/maintainer-type"
         element={
           <ProtectedRoute>
-            <>
-              <Header />
-              <div className="pt-[73px]">
-                <MaintainerTypeList />
-              </div>
-            </>
+            <Navigate to="/ams/maintainer" replace />
           </ProtectedRoute>
         }
       />
@@ -150,6 +175,22 @@ function AppRoutes() {
                 <MaintainerList />
               </div>
             </>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ams/maintenance-record"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/ams/maintainer" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ams/asset-status"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/ams/asset" replace />
           </ProtectedRoute>
         }
       />
@@ -218,7 +259,16 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="*"
+        element={
+          isAuthenticated ? (
+            <Navigate to="/" replace />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
     </Routes>
   )
 }

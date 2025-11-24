@@ -4,22 +4,43 @@ import { useSearchParams } from 'react-router-dom'
 import { AMSSidebar } from '../components/AMSSidebar'
 import { API_BASE_URLS } from '../config/api'
 
-type OwnerType = {
+type MaintenanceRecord = {
   id: string
   name: string
-  description: string
+  assetId: string
+  maintainerId: string
+  // API returns these directly
+  assetName?: string
+  maintainerName?: string
 }
 
-const API_BASE_URL = `${API_BASE_URLS.AMS}/OwnerType`
+type Asset = {
+  id: string
+  name: string
+  serialNumber: string
+}
 
-export function OwnerTypeList() {
+type Maintainer = {
+  id: string
+  name: string
+  email: string
+  phone: string
+}
+
+const API_BASE_URL = `${API_BASE_URLS.AMS}/MaintenanceRecord`
+const ASSET_API_URL = `${API_BASE_URLS.AMS}/Assets`
+const MAINTAINER_API_URL = `${API_BASE_URLS.AMS}/Maintainer`
+
+export function MaintenanceRecordList() {
   const [searchParams, setSearchParams] = useSearchParams()
   
   // Read initial state from URL
   const pageFromUrl = parseInt(searchParams.get('page') || '1', 10)
   const searchFromUrl = searchParams.get('search') || ''
   
-  const [ownerTypes, setOwnerTypes] = useState<OwnerType[]>([])
+  const [maintenanceRecords, setMaintenanceRecords] = useState<MaintenanceRecord[]>([])
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [maintainers, setMaintainers] = useState<Maintainer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState(searchFromUrl)
@@ -29,25 +50,75 @@ export function OwnerTypeList() {
   const [totalPages, setTotalPages] = useState(1)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const scrollPositionRef = useRef<number>(0)
-  const editingOwnerTypeIdRef = useRef<string | null>(null)
+  const editingRecordIdRef = useRef<string | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [deletingOwnerType, setDeletingOwnerType] = useState<OwnerType | null>(null)
-  const [editingOwnerType, setEditingOwnerType] = useState<OwnerType | null>(null)
+  const [deletingRecord, setDeletingRecord] = useState<MaintenanceRecord | null>(null)
+  const [editingRecord, setEditingRecord] = useState<MaintenanceRecord | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
+    assetId: '',
+    maintainerId: '',
   })
 
-  // Fetch owner types from API with pagination
-  const fetchOwnerTypes = async () => {
+  // Fetch assets
+  const fetchAssets = async () => {
+    try {
+      const response = await axios.get(ASSET_API_URL)
+      if (Array.isArray(response.data)) {
+        setAssets(response.data)
+      } else {
+        console.warn('Assets API returned non-array data:', response.data)
+        setAssets([])
+      }
+    } catch (err) {
+      console.error('Error fetching assets:', err)
+      setAssets([])
+      // Don't set error state here as it's not critical for initial render
+    }
+  }
+
+  // Fetch maintainers
+  const fetchMaintainers = async () => {
+    try {
+      const response = await axios.get(MAINTAINER_API_URL)
+      if (Array.isArray(response.data)) {
+        setMaintainers(response.data)
+      } else {
+        console.warn('Maintainers API returned non-array data:', response.data)
+        setMaintainers([])
+      }
+    } catch (err) {
+      console.error('Error fetching maintainers:', err)
+      setMaintainers([])
+      // Don't set error state here as it's not critical for initial render
+    }
+  }
+
+  // Get asset name by ID
+  const getAssetName = (id: string | undefined) => {
+    if (!id) return 'N/A'
+    const asset = assets.find((a) => a.id === id)
+    return asset ? asset.name : id.substring(0, 8) + '...'
+  }
+
+  // Get maintainer name by ID
+  const getMaintainerName = (id: string | undefined) => {
+    if (!id) return 'N/A'
+    const maintainer = maintainers.find((m) => m.id === id)
+    return maintainer ? maintainer.name : id.substring(0, 8) + '...'
+  }
+
+  // Fetch maintenance records from API with pagination
+  const fetchMaintenanceRecords = async () => {
     try {
       setLoading(true)
       setError(null)
       
+      // Build query parameters for server-side pagination
       const params: Record<string, string> = {}
       
-      // When searching, fetch ALL owner types (no pagination) for client-side filtering
+      // When searching, fetch ALL records (no pagination) for client-side filtering
       // When not searching, use server-side pagination
       if (searchQuery.trim()) {
         params.search = searchQuery.trim()
@@ -56,26 +127,29 @@ export function OwnerTypeList() {
         params.pageSize = pageSize.toString()
       }
       
-      console.log('Fetching owner types with params:', params)
+      console.log('Fetching maintenance records with params:', params)
       
       const response = await axios.get(API_BASE_URL, {
         params,
       })
 
+      console.log('Response status:', response.status)
       const data = response.data
-      console.log('Fetched owner types data:', data)
+      console.log('Fetched maintenance records data:', data)
       
-      // Read pagination headers
+      // Read pagination headers from response
       const headers = response.headers
       const totalCountHeader = 
         headers['x-total-count'] || 
         headers['X-Total-Count'] ||
-        headers['X-TOTAL-COUNT']
+        headers['X-TOTAL-COUNT'] ||
+        (typeof headers.get === 'function' ? headers.get('x-total-count') || headers.get('X-Total-Count') : null)
       
       const totalPagesHeader = 
         headers['x-total-pages'] || 
         headers['X-Total-Pages'] ||
-        headers['X-TOTAL-PAGES']
+        headers['X-TOTAL-PAGES'] ||
+        (typeof headers.get === 'function' ? headers.get('x-total-pages') || headers.get('X-Total-Pages') : null)
       
       // Update pagination state from response headers (only if not searching)
       if (!searchQuery.trim()) {
@@ -83,11 +157,17 @@ export function OwnerTypeList() {
           const count = parseInt(totalCountHeader, 10)
           if (!isNaN(count)) {
             setTotalCount(count)
-          } else if (Array.isArray(data)) {
-            setTotalCount(data.length)
+          } else {
+            if (Array.isArray(data)) {
+              setTotalCount(data.length)
+            }
           }
-        } else if (Array.isArray(data)) {
-          setTotalCount(data.length)
+        } else {
+          if (Array.isArray(data)) {
+            setTotalCount(data.length)
+          } else {
+            setTotalCount(0)
+          }
         }
         
         if (totalPagesHeader) {
@@ -104,19 +184,21 @@ export function OwnerTypeList() {
         }
       }
       
-      // Set owner types data with client-side filtering by name or description
+      // Set maintenance records data with client-side filtering by name
       if (Array.isArray(data)) {
         let filteredData = data
         if (searchQuery.trim()) {
           const searchLower = searchQuery.trim().toLowerCase()
-          filteredData = data.filter((ot: OwnerType) => 
-            ot.name.toLowerCase().includes(searchLower) ||
-            (ot.description && ot.description.toLowerCase().includes(searchLower))
-          )
-          console.log(`Filtered ${data.length} owner types to ${filteredData.length} matching "${searchQuery}"`)
+          filteredData = data.filter((record: MaintenanceRecord) => {
+            const name = (record.name || '').toLowerCase()
+            const assetName = (record.assetName || getAssetName(record.assetId) || '').toLowerCase()
+            const maintainerName = (record.maintainerName || getMaintainerName(record.maintainerId) || '').toLowerCase()
+            return name.includes(searchLower) || assetName.includes(searchLower) || maintainerName.includes(searchLower)
+          })
+          console.log(`Filtered ${data.length} records to ${filteredData.length} matching "${searchQuery}"`)
         }
         
-        setOwnerTypes(filteredData)
+        setMaintenanceRecords(filteredData)
         setError(null)
         
         // Update total count and pagination based on filtered results when searching
@@ -129,49 +211,63 @@ export function OwnerTypeList() {
         }
         
         // Restore scroll position after update
-        if (!searchQuery.trim() && editingOwnerTypeIdRef.current && scrollContainerRef.current) {
+        if (!searchQuery.trim() && editingRecordIdRef.current && scrollContainerRef.current) {
           setTimeout(() => {
             if (scrollContainerRef.current) {
               scrollContainerRef.current.scrollTop = scrollPositionRef.current
-              editingOwnerTypeIdRef.current = null
+              editingRecordIdRef.current = null
             }
           }, 50)
         }
       } else {
         console.error('Invalid data format, expected array:', data)
-        setOwnerTypes([])
+        setMaintenanceRecords([])
         setError('Invalid response format from server')
       }
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        const errorMessage = err.response?.data?.message || err.message || 'An error occurred while fetching owner types'
+        const errorMessage = err.response?.data?.message || err.message || 'An error occurred while fetching maintenance records'
+        console.error('Axios error:', err.response?.status, errorMessage)
         setError(errorMessage)
       } else {
-        setError(err instanceof Error ? err.message : 'An error occurred while fetching owner types')
+        const errorMessage = err instanceof Error ? err.message : 'An error occurred while fetching maintenance records'
+        console.error('Error fetching maintenance records:', err)
+        setError(errorMessage)
       }
-      setOwnerTypes([])
+      setMaintenanceRecords([])
     } finally {
       setLoading(false)
+      console.log('Fetch completed, loading set to false')
     }
   }
 
-  // Add new owner type
+  // Add new maintenance record
   const handleAdd = async () => {
     try {
       setError(null)
       
       const name = (formData.name || '').trim()
-      const description = (formData.description || '').trim()
       
       if (!name) {
         setError('Name is required')
         return
       }
+      if (!formData.assetId || formData.assetId.trim() === '') {
+        setError('Please select an asset')
+        return
+      }
+      if (!formData.maintainerId || formData.maintainerId.trim() === '') {
+        setError('Please select a maintainer')
+        return
+      }
       
       const payload = {
         name: name,
-        description: description || '',
+        assetId: formData.assetId,
+        maintainerId: formData.maintainerId,
       }
+      
+      console.log('Adding maintenance record with payload:', JSON.stringify(payload, null, 2))
       
       await axios.post(API_BASE_URL, payload, {
         headers: {
@@ -179,18 +275,18 @@ export function OwnerTypeList() {
         },
       })
 
-      setSearchQuery('')
-      setCurrentPage(1)
       setShowModal(false)
       setFormData({
         name: '',
-        description: '',
+        assetId: '',
+        maintainerId: '',
       })
       
-      await fetchOwnerTypes()
+      await fetchMaintenanceRecords()
     } catch (err) {
       if (axios.isAxiosError(err)) {
         const errorData = err.response?.data || {}
+        
         if (errorData.errors && typeof errorData.errors === 'object') {
           const validationErrors = Object.entries(errorData.errors)
             .map(([field, messages]: [string, any]) => {
@@ -200,58 +296,72 @@ export function OwnerTypeList() {
             .join('\n')
           setError(`Validation errors:\n${validationErrors}`)
         } else {
-          const errorMessage = errorData.title || errorData.message || err.message || 'Failed to add owner type'
+          const errorMessage = errorData.title || errorData.message || err.message || 'Failed to add maintenance record'
           setError(errorMessage)
         }
+        console.error('Error adding maintenance record:', err.response?.status, err.response?.data)
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to add owner type')
+        setError(err instanceof Error ? err.message : 'Failed to add maintenance record')
+        console.error('Error adding maintenance record:', err)
       }
     }
   }
 
-  // Update owner type
+  // Update maintenance record
   const handleUpdate = async () => {
-    if (!editingOwnerType) return
+    if (!editingRecord) return
 
     try {
       setError(null)
       
-      // Store current scroll position before update
+      // Store current scroll position and record ID before update
       if (scrollContainerRef.current) {
         scrollPositionRef.current = scrollContainerRef.current.scrollTop
       }
-      editingOwnerTypeIdRef.current = editingOwnerType.id
+      editingRecordIdRef.current = editingRecord.id
       
       const name = (formData.name || '').trim()
-      const description = (formData.description || '').trim()
       
       if (!name) {
         setError('Name is required')
         return
       }
+      if (!formData.assetId || formData.assetId.trim() === '') {
+        setError('Please select an asset')
+        return
+      }
+      if (!formData.maintainerId || formData.maintainerId.trim() === '') {
+        setError('Please select a maintainer')
+        return
+      }
       
       const payload = {
         name: name,
-        description: description || '',
+        assetId: formData.assetId,
+        maintainerId: formData.maintainerId,
       }
       
-      await axios.put(`${API_BASE_URL}/${editingOwnerType.id}`, payload, {
+      console.log('Updating maintenance record with payload:', JSON.stringify(payload, null, 2))
+      
+      await axios.put(`${API_BASE_URL}/${editingRecord.id}`, payload, {
         headers: {
           'Content-Type': 'application/json',
         },
       })
 
-      await fetchOwnerTypes()
+      await fetchMaintenanceRecords()
       
       setShowModal(false)
-      setEditingOwnerType(null)
+      setEditingRecord(null)
       setFormData({
         name: '',
-        description: '',
+        assetId: '',
+        maintainerId: '',
       })
     } catch (err) {
       if (axios.isAxiosError(err)) {
         const errorData = err.response?.data || {}
+        
         if (errorData.errors && typeof errorData.errors === 'object') {
           const validationErrors = Object.entries(errorData.errors)
             .map(([field, messages]: [string, any]) => {
@@ -261,71 +371,73 @@ export function OwnerTypeList() {
             .join('\n')
           setError(`Validation errors:\n${validationErrors}`)
         } else {
-          const errorMessage = errorData.title || errorData.message || err.message || 'Failed to update owner type'
+          const errorMessage = errorData.title || errorData.message || err.message || 'Failed to update maintenance record'
           setError(errorMessage)
         }
+        console.error('Error updating maintenance record:', err.response?.status, err.response?.data)
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to update owner type')
+        setError(err instanceof Error ? err.message : 'Failed to update maintenance record')
+        console.error('Error updating maintenance record:', err)
       }
     }
   }
 
-  // Delete owner type
+  // Open delete confirmation modal
+  const openDeleteModal = (record: MaintenanceRecord) => {
+    setDeletingRecord(record)
+    setShowDeleteModal(true)
+  }
+
+  // Delete maintenance record
   const handleDelete = async () => {
-    if (!deletingOwnerType) return
+    if (!deletingRecord) return
 
     try {
       setError(null)
-      await axios.delete(`${API_BASE_URL}/${deletingOwnerType.id}`)
-      await fetchOwnerTypes()
+      await axios.delete(`${API_BASE_URL}/${deletingRecord.id}`)
+
+      await fetchMaintenanceRecords()
       setShowDeleteModal(false)
-      setDeletingOwnerType(null)
+      setDeletingRecord(null)
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        const errorMessage = err.response?.data?.message || err.message || 'Failed to delete owner type'
+        const errorMessage = err.response?.data?.message || err.message || 'Failed to delete maintenance record'
         setError(errorMessage)
+        console.error('Error deleting maintenance record:', err.response?.status, errorMessage)
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to delete owner type')
+        setError(err instanceof Error ? err.message : 'Failed to delete maintenance record')
+        console.error('Error deleting maintenance record:', err)
       }
     }
   }
 
   // Open modal for add
   const openAddModal = () => {
-    setEditingOwnerType(null)
+    setEditingRecord(null)
     setFormData({
       name: '',
-      description: '',
+      assetId: '',
+      maintainerId: '',
     })
     setShowModal(true)
   }
 
   // Open modal for edit
-  const openEditModal = (ot: OwnerType) => {
-    setEditingOwnerType(ot)
+  const openEditModal = (record: MaintenanceRecord) => {
+    setEditingRecord(record)
     setFormData({
-      name: ot.name,
-      description: ot.description || '',
+      name: record.name,
+      assetId: record.assetId,
+      maintainerId: record.maintainerId,
     })
     setShowModal(true)
-  }
-
-  // Open delete confirmation modal
-  const openDeleteModal = (ot: OwnerType) => {
-    setDeletingOwnerType(ot)
-    setShowDeleteModal(true)
   }
 
   // Submit form
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name?.trim()) {
-      setError('Please fill in the required field (Name)')
-      return
-    }
-    
-    if (editingOwnerType) {
+    if (editingRecord) {
       await handleUpdate()
     } else {
       await handleAdd()
@@ -334,7 +446,17 @@ export function OwnerTypeList() {
 
   // Initial fetch on mount
   useEffect(() => {
-    fetchOwnerTypes()
+    try {
+      console.log('MaintenanceRecordList: Component mounted, starting data fetch')
+      fetchAssets()
+      fetchMaintainers()
+      console.log('Initial mount - fetching maintenance records')
+      fetchMaintenanceRecords()
+    } catch (err) {
+      console.error('Error in initial useEffect:', err)
+      setError('Failed to initialize page. Please refresh.')
+      setLoading(false)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -363,6 +485,7 @@ export function OwnerTypeList() {
     const urlPage = parseInt(params.get('page') || '1', 10)
     
     if (urlPage === 1 && currentPage !== 1 && searchQuery) {
+      console.log('Search changed, resetting to page 1')
       setCurrentPage(1)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -371,7 +494,8 @@ export function OwnerTypeList() {
   // Debounced search effect
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      fetchOwnerTypes()
+      console.log('Fetching maintenance records - Page:', currentPage, 'Search:', searchQuery)
+      fetchMaintenanceRecords()
     }, 500)
 
     return () => clearTimeout(timeoutId)
@@ -380,23 +504,27 @@ export function OwnerTypeList() {
 
   return (
     <div className="flex min-h-screen">
+      {/* Sidebar on the left */}
       <AMSSidebar />
 
+      {/* Main content area */}
       <main className="flex-1 ml-72 px-6 py-8">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-blue-600">Owner Type</h1>
+              <h1 className="text-2xl font-bold text-blue-600">Maintenance Records</h1>
             </div>
-            <button
-              onClick={openAddModal}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={openAddModal}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add
+              </button>
+            </div>
           </div>
 
           {/* Search Bar */}
@@ -409,7 +537,7 @@ export function OwnerTypeList() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  fetchOwnerTypes()
+                  fetchMaintenanceRecords()
                 }
               }}
               className="w-full px-4 py-2 pl-10 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -458,8 +586,9 @@ export function OwnerTypeList() {
           <div className="flex-shrink-0 overflow-hidden">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-[25%]" />
                 <col className="w-[30%]" />
-                <col className="w-[55%]" />
+                <col className="w-[30%]" />
                 <col className="w-[15%]" />
               </colgroup>
               <thead className="bg-slate-50 border-b border-slate-200">
@@ -468,7 +597,10 @@ export function OwnerTypeList() {
                     NAME
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                    DESCRIPTION
+                    ASSET
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    MAINTAINER
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">
                     ACTION
@@ -482,32 +614,34 @@ export function OwnerTypeList() {
           <div ref={scrollContainerRef} className="overflow-y-auto max-h-[600px] flex-1">
             <table className="w-full table-fixed">
               <colgroup>
+                <col className="w-[25%]" />
                 <col className="w-[30%]" />
-                <col className="w-[55%]" />
+                <col className="w-[30%]" />
                 <col className="w-[15%]" />
               </colgroup>
               <tbody className="bg-white divide-y divide-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={3} className="px-6 py-4 text-center text-sm text-slate-500">
+                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">
                       Loading...
                     </td>
                   </tr>
-                ) : ownerTypes.length > 0 ? (
-                  ownerTypes.map((ot) => (
-                    <tr key={ot.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
-                        {ot.name}
+                ) : maintenanceRecords.length > 0 ? (
+                  maintenanceRecords.map((record) => (
+                    <tr key={record.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                        {record.name}
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-900">
-                        <div className="max-w-md truncate" title={ot.description}>
-                          {ot.description || '-'}
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                        {record.assetName || getAssetName(record.assetId) || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                        {record.maintainerName || getMaintainerName(record.maintainerId) || 'N/A'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => openEditModal(ot)}
+                            onClick={() => openEditModal(record)}
                             className="text-blue-600 hover:text-blue-800 p-2 rounded hover:bg-blue-50 transition"
                             title="Edit"
                           >
@@ -526,7 +660,7 @@ export function OwnerTypeList() {
                             </svg>
                           </button>
                           <button
-                            onClick={() => openDeleteModal(ot)}
+                            onClick={() => openDeleteModal(record)}
                             className="text-red-600 hover:text-red-800 p-2 rounded hover:bg-red-50 transition"
                             title="Delete"
                           >
@@ -550,8 +684,8 @@ export function OwnerTypeList() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={3} className="px-6 py-4 text-center text-sm text-slate-500">
-                      No owner types found
+                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-slate-500">
+                      No maintenance records found
                     </td>
                   </tr>
                 )}
@@ -582,21 +716,18 @@ export function OwnerTypeList() {
                 ‹
               </button>
               
-              {/* Page Number Buttons - Constructed from server pagination headers (X-Total-Pages) */}
+              {/* Page Number Buttons */}
               {totalPages > 0 ? (
                 (() => {
                   const pages: number[] = []
                   
-                  // Use totalPages from server response header (X-Total-Pages)
                   if (totalPages <= 7) {
-                    // Show all pages if 7 or fewer
                     for (let i = 1; i <= totalPages; i++) {
                       pages.push(i)
                     }
                   } else {
-                    // Show first page, current page area, and last page
                     pages.push(1)
-                    if (currentPage > 3) pages.push(-1) // Ellipsis
+                    if (currentPage > 3) pages.push(-1)
                     
                     const start = Math.max(2, currentPage - 1)
                     const end = Math.min(totalPages - 1, currentPage + 1)
@@ -604,7 +735,7 @@ export function OwnerTypeList() {
                       pages.push(i)
                     }
                     
-                    if (currentPage < totalPages - 2) pages.push(-1) // Ellipsis
+                    if (currentPage < totalPages - 2) pages.push(-1)
                     pages.push(totalPages)
                   }
                   
@@ -621,7 +752,7 @@ export function OwnerTypeList() {
                             ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                             : 'border-slate-300 hover:bg-slate-50 text-slate-700'
                         }`}
-                        title={`Page ${page} of ${totalPages} (from server header)`}
+                        title={`Page ${page} of ${totalPages}`}
                       >
                         {page}
                       </button>
@@ -674,25 +805,47 @@ export function OwnerTypeList() {
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-            <div className={`${editingOwnerType ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4`}>
+            {/* Header */}
+            <div className={`${editingRecord ? 'bg-blue-600' : 'bg-green-600'} px-6 py-4`}>
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-white bg-opacity-20 rounded-lg flex items-center justify-center">
-                  {editingOwnerType ? (
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  {editingRecord ? (
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
                     </svg>
                   ) : (
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <svg
+                      className="w-6 h-6 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
                     </svg>
                   )}
                 </div>
                 <h2 className="text-xl font-bold text-white">
-                  {editingOwnerType ? 'Edit Owner Type' : 'Add New Owner Type'}
+                  {editingRecord ? 'Edit Maintenance Record' : 'Add New Maintenance Record'}
                 </h2>
               </div>
             </div>
 
+            {/* Form Body */}
             <form onSubmit={handleSubmit} className="p-6">
               <div className="mb-4">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -703,33 +856,70 @@ export function OwnerTypeList() {
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="Please enter owner type name"
+                  placeholder="Please enter maintenance record name"
                   required
                 />
               </div>
 
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  Description
+                  Asset <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                <select
+                  value={formData.assetId}
+                  onChange={(e) => setFormData({ ...formData, assetId: e.target.value })}
                   className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                  placeholder="Please enter description"
-                  rows={4}
-                />
+                  disabled={assets.length === 0}
+                  required
+                >
+                  <option value="">Please select asset</option>
+                  {assets.length === 0 ? (
+                    <option value="">No assets available</option>
+                  ) : (
+                    assets.map((asset) => (
+                      <option key={asset.id} value={asset.id}>
+                        {asset.name} ({asset.serialNumber})
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
 
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Maintainer <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.maintainerId}
+                  onChange={(e) => setFormData({ ...formData, maintainerId: e.target.value })}
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                  disabled={maintainers.length === 0}
+                  required
+                >
+                  <option value="">Please select maintainer</option>
+                  {maintainers.length === 0 ? (
+                    <option value="">No maintainers available</option>
+                  ) : (
+                    maintainers.map((maintainer) => (
+                      <option key={maintainer.id} value={maintainer.id}>
+                        {maintainer.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => {
                     setShowModal(false)
-                    setEditingOwnerType(null)
+                    setEditingRecord(null)
                     setFormData({
                       name: '',
-                      description: '',
+                      assetId: '',
+                      maintainerId: '',
                     })
                   }}
                   className="px-5 py-2.5 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 hover:border-slate-400 transition font-medium"
@@ -739,12 +929,46 @@ export function OwnerTypeList() {
                 <button
                   type="submit"
                   className={`px-5 py-2.5 rounded-lg text-white font-medium transition shadow-md hover:shadow-lg ${
-                    editingOwnerType
+                    editingRecord
                       ? 'bg-blue-600 hover:bg-blue-700'
                       : 'bg-green-600 hover:bg-green-700'
                   }`}
                 >
-                  {editingOwnerType ? 'Update Owner Type' : 'Add Owner Type'}
+                  {editingRecord ? (
+                    <span className="flex items-center gap-2">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                      Update Record
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                      Add Record
+                    </span>
+                  )}
                 </button>
               </div>
             </form>
@@ -753,31 +977,41 @@ export function OwnerTypeList() {
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && deletingOwnerType && (
+      {showDeleteModal && deletingRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
             <div className="flex items-center gap-4 mb-4">
               <div className="flex-shrink-0 w-16 h-16 bg-red-50 rounded-full flex items-center justify-center ring-4 ring-red-100">
-                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <svg
+                  className="w-8 h-8 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
               </div>
               <div className="flex-1">
-                <h2 className="text-xl font-bold text-slate-900">Delete Owner Type</h2>
+                <h2 className="text-xl font-bold text-slate-900">Delete Maintenance Record</h2>
                 <p className="text-sm text-slate-600 mt-1">
-                  Are you sure you want to delete "{deletingOwnerType.name}"?
+                  Are you sure you want to delete "{deletingRecord.name}"?
                 </p>
               </div>
             </div>
             <p className="text-sm text-slate-500 mb-6">
-              This action cannot be undone. This will permanently delete the owner type.
+              This action cannot be undone. This will permanently delete the maintenance record.
             </p>
             <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setShowDeleteModal(false)
-                  setDeletingOwnerType(null)
+                  setDeletingRecord(null)
                 }}
                 className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition"
               >
